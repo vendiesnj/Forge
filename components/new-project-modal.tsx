@@ -15,7 +15,7 @@ type Stage = 'idea' | 'building' | 'built'
 const STAGES: { value: Stage; label: string; emoji: string; desc: string }[] = [
   { value: 'idea',     emoji: '💡', label: 'Just an idea',    desc: 'Starting from scratch — validate and plan' },
   { value: 'building', emoji: '🔨', label: 'In progress',     desc: 'Have some code, want analysis & guidance' },
-  { value: 'built',    emoji: '🚀', label: 'Already built',   desc: 'Connect your repo, run analysis, then list on marketplace' },
+  { value: 'built',    emoji: '🚀', label: 'Already built',   desc: 'Connect your repo and run feature analysis' },
 ]
 
 interface PageOption {
