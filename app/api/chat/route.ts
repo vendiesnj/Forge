@@ -48,12 +48,11 @@ export async function POST(request: NextRequest) {
         userMessage
       )
 
-    // Log every message
-    supabase
+    // Log every message (fire-and-forget)
+    void supabase
       .from('chat_messages')
       .insert({ user_message: userMessage, ip, type: isFeatureRequest ? 'feature_request' : 'general' })
-      .then(() => {})
-      .catch((e: unknown) => console.error('Failed to log chat message:', e))
+      .then(({ error }) => { if (error) console.error('Failed to log chat message:', error) })
 
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
