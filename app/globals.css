@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #eeebe0;
+  --surface: #fff;
+  --surface2: #f9f7f2;
+  --border: #d0cdc4;
+  --border2: #b8b4aa;
+  --ink: #1a1915;
+  --ink2: #3d3b35;
+  --ink3: #6b6860;
+  --ink4: #9c9a94;
+  --amber: #e5820a;
+  --amber-bg: #fff8ee;
+  --amber-border: #f0b04a;
+  --green: #2d7a45;
+  --green-bg: #f0faf4;
+  --green-border: #86c99a;
+  --red: #b03030;
+  --red-bg: #fff2f2;
+  --red-border: #e8a0a0;
+  --blue: #2854a0;
+  --blue-bg: #f0f4ff;
+  --blue-border: #90aae0;
+  --r: 6px;
+  --font: 'Geist', system-ui, sans-serif;
+  --mono: 'Geist Mono', monospace;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fadeUp {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-fadeUp {
+  animation: fadeUp 0.3s ease forwards;
+}
+
+.shimmer-bar {
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--amber) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--surface2);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--ink4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  margin: 0;
+  padding: 0;
+}
+
+.prose-sm p {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--ink2);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.tag-amber { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber); }
+.tag-green { background: var(--green-bg); border-color: var(--green-border); color: var(--green); }
+.tag-red { background: var(--red-bg); border-color: var(--red-border); color: var(--red); }
+.tag-blue { background: var(--blue-bg); border-color: var(--blue-border); color: var(--blue); }
+.tag-gray { background: var(--surface2); border-color: var(--border); color: var(--ink3); }

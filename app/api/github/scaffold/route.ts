@@ -1,0 +1,248 @@
+import { auth } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createServiceClient } from '@/lib/supabase/server'
+
+async function getGithubToken(userId: string) {
+  const supabase = createServiceClient()
+  const { data } = await supabase
+    .from('user_integrations')
+    .select('access_token, meta')
+    .eq('user_id', userId)
+    .eq('provider', 'github')
+    .single()
+  return { token: data?.access_token ?? null, login: data?.meta?.login ?? null }
+}
+
+function toBase64(str: string) {
+  return Buffer.from(str, 'utf-8').toString('base64')
+}
+
+async function pushFile(
+  token: string,
+  repoFullName: string,
+  path: string,
+  content: string,
+  message: string,
+) {
+  const res = await fetch(`https://api.github.com/repos/${repoFullName}/contents/${path}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message, content: toBase64(content) }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.message ?? `Failed to push ${path}`)
+  }
+}
+
+interface StackItem { name: string; role?: string; purpose?: string }
+interface Feature { feature: string; why: string }
+interface SetupStep { step: number; title: string; description: string; command?: string | null }
+
+export async function POST(req: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { token, login } = await getGithubToken(userId)
+  if (!token) return NextResponse.json({ error: 'GitHub not connected' }, { status: 400 })
+
+  const body = await req.json() as {
+    projectId?: string
+    repoName: string
+    productName: string
+    tagline?: string
+    idea?: string
+    track?: string
+    stack?: StackItem[]
+    mvpFeatures?: Feature[]
+    setupSteps?: SetupStep[]
+    envVars?: string[]
+    isPrivate?: boolean
+  }
+
+  const {
+    projectId,
+    repoName,
+    productName,
+    tagline = '',
+    idea = '',
+    track = 'software',
+    stack = [],
+    mvpFeatures = [],
+    setupSteps = [],
+    envVars = [],
+    isPrivate = true,
+  } = body
+
+  if (!repoName) return NextResponse.json({ error: 'repoName is required' }, { status: 400 })
+
+  // 1. Create the repo
+  const createRes = await fetch('https://api.github.com/user/repos', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: repoName,
+      description: tagline || `Built with Forge`,
+      private: isPrivate,
+      auto_init: true,
+    }),
+  })
+
+  const repoData = await createRes.json()
+  if (!createRes.ok) {
+    return NextResponse.json({ error: repoData.message ?? 'Failed to create repo' }, { status: createRes.status })
+  }
+
+  const repoFullName: string = repoData.full_name
+  const repoUrl: string = repoData.html_url
+  const cloneUrl = `git clone ${repoData.clone_url}`
+
+  // 2. Build CLAUDE.md — Claude Code reads this automatically on startup
+  const featurePrompts = mvpFeatures.map((f, i) => `
+### ${i + 1}. ${f.feature}
+**Why this matters:** ${f.why}
+
+**Prompt to use:**
+\`\`\`
+Build the "${f.feature}" feature for ${productName}. ${f.why} Create all necessary components, API routes, and database schema. Wire it end-to-end and make sure it works. Follow the existing code style.
+\`\`\`
+`.trim()).join('\n\n')
+
+  const stackList = stack.map(s => `- **${s.name}** — ${s.role ?? s.purpose ?? ''}`).join('\n')
+
+  const setupList = setupSteps.map(s =>
+    `${s.step}. **${s.title}** — ${s.description}${s.command ? `\n   \`${s.command}\`` : ''}`
+  ).join('\n')
+
+  const claudeMd = `# ${productName}
+${tagline ? `\n> ${tagline}\n` : ''}
+## What we're building
+
+${idea || 'No description provided.'}
+
+## Tech stack
+
+${stackList || '(Stack TBD)'}
+
+## Getting started
+
+### First prompt — project setup
+Paste this into Claude Code after cloning:
+
+\`\`\`
+I'm starting a new ${track} project called "${productName}". ${tagline}
+
+Tech stack: ${stack.map(s => s.name).join(', ')}.
+
+Set up the full project structure: folder layout, config files (tsconfig, tailwind, next.config), a basic layout component, and placeholder pages for each main section. Add a README with setup instructions. Keep it clean and production-ready.
+\`\`\`
+
+## MVP features to build
+
+${featurePrompts || '(Run Idea Lab to generate feature list)'}
+
+## Deploy prompt
+
+\`\`\`
+Help me deploy ${productName} to Vercel. Walk me through connecting this GitHub repo, setting all environment variables from .env.example, and verifying the first build succeeds. Fix any issues blocking the deployment.
+\`\`\`
+
+## Setup reference
+
+${setupList || '(Run Build Guide to generate setup steps)'}
+
+---
+*Generated by [Forge](https://forge.app) · Claude Code reads this file automatically*
+`
+
+  // 3. Build .env.example
+  const envExample = envVars.length > 0
+    ? envVars.map(v => `${v}=`).join('\n')
+    : `# Add your environment variables here
+# See your Keys page in Forge for setup instructions`
+
+  const envExampleContent = `# ${productName} — environment variables
+# Copy this file to .env.local and fill in your values
+# Never commit .env.local to git
+
+${envExample}
+`
+
+  // 4. Build README.md
+  const readmeMd = `# ${productName}
+${tagline ? `\n> ${tagline}\n` : ''}
+## Quick start
+
+\`\`\`bash
+${cloneUrl}
+cd ${repoName}
+cp .env.example .env.local
+npm install
+\`\`\`
+
+Fill in \`.env.local\` with your API keys, then:
+
+\`\`\`bash
+npm run dev
+\`\`\`
+
+## Building with Claude Code
+
+This project includes a \`CLAUDE.md\` file with full project context and copy-pasteable prompts for every feature. Claude Code reads it automatically.
+
+\`\`\`bash
+# In your project directory
+claude
+\`\`\`
+
+## Stack
+
+${stackList || '(Stack TBD)'}
+
+---
+*Built with [Forge](https://forge.app)*
+`
+
+  // 5. Push files (sleep briefly to let GitHub initialize the repo)
+  await new Promise((r) => setTimeout(r, 1500))
+
+  try {
+    await pushFile(token, repoFullName, 'CLAUDE.md', claudeMd, 'Add CLAUDE.md with project context and prompts')
+    await pushFile(token, repoFullName, '.env.example', envExampleContent, 'Add .env.example')
+    await pushFile(token, repoFullName, 'README.md', readmeMd, 'Update README with project info and setup')
+  } catch (err) {
+    // Repo created but file push failed — still return the repo
+    console.error('File push error:', err)
+    return NextResponse.json({
+      repo: { fullName: repoFullName, url: repoUrl, cloneUrl: repoData.clone_url },
+      warning: 'Repo created but some files failed to push. You can push them manually.',
+    })
+  }
+
+  // 6. Link repo to project if provided
+  if (projectId) {
+    const supabase = createServiceClient()
+    await supabase
+      .from('projects')
+      .update({ github_repo: repoFullName })
+      .eq('id', projectId)
+      .eq('user_id', userId)
+  }
+
+  return NextResponse.json({
+    repo: {
+      fullName: repoFullName,
+      url: repoUrl,
+      cloneUrl: repoData.clone_url,
+      login,
+    },
+  })
+}
