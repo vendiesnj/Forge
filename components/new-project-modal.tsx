@@ -214,8 +214,8 @@ export function NewProjectModal({ onClose }: NewProjectModalProps) {
             </div>
           </div>
 
-          {/* Page checklist */}
-          <div>
+          {/* Page checklist — hidden for 'built' since they go straight to overview */}
+          {stage !== 'built' && <div>
             <label className="block text-xs font-medium text-ink2 mb-1.5">What do you want Forge to calculate?</label>
             <div className="space-y-1.5">
               {PAGE_OPTIONS.map(opt => {
@@ -251,7 +251,7 @@ export function NewProjectModal({ onClose }: NewProjectModalProps) {
             {selected.size === 0 && (
               <p className="text-[10px] text-ink4 mt-1.5">Nothing selected — project will be created and you can run analyses manually.</p>
             )}
-          </div>
+          </div>}
 
           {error && <p className="text-xs text-red">{error}</p>}
 

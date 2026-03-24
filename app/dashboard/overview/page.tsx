@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/topbar'
 import { useProject } from '@/components/project-context'
 
@@ -72,6 +73,7 @@ function stageBadge(stage: 'idea' | 'building' | 'built') {
 
 export default function OverviewPage() {
   const { activeProject } = useProject()
+  const router = useRouter()
 
   if (!activeProject) return null
 
@@ -194,6 +196,39 @@ export default function OverviewPage() {
             })}
           </div>
         </div>
+
+        {/* Step navigation */}
+        {(() => {
+          const nextStep = steps.find(s => !completed.has(s.id))
+          const lastDone = [...steps].reverse().find(s => completed.has(s.id))
+          return (
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={() => lastDone && router.push(lastDone.href)}
+                disabled={!lastDone}
+                className="flex items-center gap-1.5 px-4 py-2 border border-border rounded-forge text-sm text-ink3 hover:text-ink hover:border-border2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                {lastDone ? lastDone.label : 'Back'}
+              </button>
+              {nextStep ? (
+                <Link
+                  href={nextStep.href}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-ink text-white rounded-forge text-sm font-medium hover:bg-ink2 transition-colors"
+                >
+                  Next: {nextStep.label}
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              ) : (
+                <span className="text-sm text-green-600 font-medium">All steps complete!</span>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Estimated Time to Launch */}
         <div className={`rounded-forge border p-4 ${isLaunched ? 'bg-green-50 border-green-200' : 'bg-surface border-border'}`}>
