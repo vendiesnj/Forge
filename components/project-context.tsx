@@ -56,10 +56,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const inFlight = useRef<Set<AnalysisCacheKey>>(new Set())
 
   const refreshProjects = useCallback(() => {
-    fetch('/api/projects')
-      .then((r) => r.json())
-      .then((d) => {
-        const list: Project[] = d.projects ?? []
+    // Fetch projects and analyses in parallel
+    Promise.all([
+      fetch('/api/projects').then(r => r.json()),
+      fetch('/api/analyses').then(r => r.json()).catch(() => ({ analyses: [] })),
+    ]).then(([projectsData, analysesData]) => {
+        const list: Project[] = projectsData.projects ?? []
         setProjects(list)
         _setActiveProject((prev) => {
           if (prev) {
@@ -71,7 +73,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
           if (savedId) return list.find(p => p.id === savedId) ?? list[0] ?? null
           return list[0] ?? null
         })
-        // Hydrate cache from localStorage for all known projects
+
+        // Hydrate from localStorage first (most recent = in-memory writes)
         const types: AnalysisType[] = ['idea', 'market', 'distribution', 'gaps', 'patent', 'acquire', 'buildguide']
         const hydrated: Record<string, unknown> = {}
         for (const p of list) {
@@ -82,6 +85,20 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             }
           }
         }
+
+        // Fill gaps from Supabase (latest per project+type, skipping what localStorage already has)
+        const dbAnalyses: Array<{ project_id: string; type: string; result: unknown }> = analysesData.analyses ?? []
+        const seen = new Set<string>()
+        for (const a of dbAnalyses) {
+          const key = `${a.project_id}:${a.type}`
+          if (!seen.has(key) && !hydrated[key]) {
+            seen.add(key)
+            hydrated[key] = a.result
+            // Back-fill localStorage so future loads are instant
+            try { localStorage.setItem(`forge:analysis:${key}`, JSON.stringify(a.result)) } catch {}
+          }
+        }
+
         setAnalysisCacheState(prev => ({ ...hydrated, ...prev })) // prev wins (in-memory is fresher)
       })
       .catch(() => {})
