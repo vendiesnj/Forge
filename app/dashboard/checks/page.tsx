@@ -813,7 +813,9 @@ function SoftwareKeys({ guide }: { guide: BuildGuide | null }) {
 
   const visibleServices = ALL_SERVICES
     .filter(s =>
-      s.alwaysShow || s.matchKeywords.some(kw =>
+      s.alwaysShow ||
+      !!states[s.id]?.key ||
+      s.matchKeywords.some(kw =>
         allSignals.some(sig => sig.includes(kw) || kw.includes(sig))
       ) || detectedIds.includes(s.id)
     )
