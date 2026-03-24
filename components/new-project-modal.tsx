@@ -15,7 +15,7 @@ type Stage = 'idea' | 'building' | 'built'
 const STAGES: { value: Stage; label: string; emoji: string; desc: string }[] = [
   { value: 'idea',     emoji: '💡', label: 'Just an idea',    desc: 'Starting from scratch — validate and plan' },
   { value: 'building', emoji: '🔨', label: 'In progress',     desc: 'Have some code, want analysis & guidance' },
-  { value: 'built',    emoji: '🚀', label: 'Already built',   desc: 'Skip analysis, jump to features & deployment' },
+  { value: 'built',    emoji: '🚀', label: 'Already built',   desc: 'Connect your repo, run analysis, then list on marketplace' },
 ]
 
 interface PageOption {
@@ -42,7 +42,7 @@ const STAGE_DEFAULTS: Record<Stage, (PageOption['type'])[]> = {
 const STAGE_ROUTE: Record<Stage, string> = {
   idea:     '/dashboard/idea-lab',
   building: '/dashboard/build-guide',
-  built:    '/dashboard/features',
+  built:    '/dashboard/overview',
 }
 
 export function NewProjectModal({ onClose }: NewProjectModalProps) {
@@ -113,7 +113,7 @@ export function NewProjectModal({ onClose }: NewProjectModalProps) {
   const ctaLabel = selected.has('idea_lab')
     ? 'Start in Idea Lab →'
     : stage === 'built'
-    ? 'Go to Features →'
+    ? 'Go to Overview →'
     : stage === 'building'
     ? 'Jump to Build Guide →'
     : 'Create Project →'
