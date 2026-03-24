@@ -692,6 +692,176 @@ function ServiceCard({ service, state, onTest, onKeyChange, highlight, detectedI
   )
 }
 
+// ─── GitHub setup card (replaces generic ServiceCard for GitHub) ──────────────
+
+function GitHubSetupCard({ onOAuthSuccess, projectId }: { onOAuthSuccess: () => void; projectId?: string }) {
+  const { activeProject, refreshProjects } = useProject()
+  const { github } = useIntegrations()
+  const [repos, setRepos] = useState<{ id: number; full_name: string; private: boolean }[]>([])
+  const [reposLoading, setReposLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const isOAuthConnected = !!github
+  const repoLinked = activeProject?.github_repo
+
+  // Load repos once OAuth is connected
+  useEffect(() => {
+    if (!isOAuthConnected || repoLinked) return
+    setReposLoading(true)
+    fetch('/api/github/repos')
+      .then(r => r.json())
+      .then(d => setRepos(d.repos ?? []))
+      .finally(() => setReposLoading(false))
+  }, [isOAuthConnected, repoLinked])
+
+  const handleConnectOAuth = () => {
+    window.open(`/api/auth/github?popup=true${projectId ? `&project=${projectId}` : ''}`, 'forge-oauth', 'width=600,height=700,scrollbars=yes,resizable=yes')
+    try {
+      const ch = new BroadcastChannel('forge-oauth')
+      ch.onmessage = (e) => {
+        if (e.data?.type === 'oauth-success') { onOAuthSuccess(); ch.close() }
+      }
+    } catch {}
+  }
+
+  const handleLinkRepo = async (repoFullName: string) => {
+    if (!activeProject) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/github/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: activeProject.id, repoFullName }),
+      })
+      if (!res.ok) throw new Error('Failed to link repo')
+      await refreshProjects()
+    } catch {
+      setError('Failed to link repo — try again')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const filtered = repos.filter(r => r.full_name.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div className="bg-surface border border-border rounded-forge overflow-hidden">
+      <div className="flex items-center gap-4 p-4 border-b border-border">
+        <span className="text-2xl w-8 text-center shrink-0">🐙</span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium text-ink">GitHub</p>
+            {isOAuthConnected && !repoLinked && (
+              <span className="tag tag-amber">Step 2: link repo</span>
+            )}
+            {isOAuthConnected && repoLinked && (
+              <span className="tag tag-green">Connected</span>
+            )}
+          </div>
+          <p className="text-xs text-ink4">
+            {repoLinked ? `Linked: ${repoLinked}` : 'Source code & CI/CD'}
+          </p>
+        </div>
+        {isOAuthConnected && repoLinked && (
+          <svg className="w-4 h-4 text-green shrink-0" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+
+      {/* Step 1: Connect OAuth */}
+      {!isOAuthConnected && (
+        <div className="p-4 space-y-3">
+          <div className="flex items-start gap-3 p-3 bg-surface2 border border-border rounded-forge">
+            <div className="w-5 h-5 rounded-full bg-ink text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</div>
+            <div className="flex-1">
+              <p className="text-xs font-medium text-ink mb-0.5">Connect your GitHub account</p>
+              <p className="text-xs text-ink4">One-time OAuth — no key to paste</p>
+            </div>
+            <button
+              onClick={handleConnectOAuth}
+              className="px-3 py-1.5 bg-ink text-white text-xs font-medium rounded-forge hover:bg-ink2 transition-colors shrink-0"
+            >
+              Connect GitHub →
+            </button>
+          </div>
+          <div className="flex items-start gap-3 p-3 border border-border rounded-forge opacity-40">
+            <div className="w-5 h-5 rounded-full bg-surface2 border border-border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 text-ink4">2</div>
+            <div>
+              <p className="text-xs font-medium text-ink3">Pick your repo</p>
+              <p className="text-xs text-ink4">Unlocks after step 1</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Link repo */}
+      {isOAuthConnected && !repoLinked && (
+        <div className="p-4 space-y-3">
+          <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-forge">
+            <div className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">✓</div>
+            <div>
+              <p className="text-xs font-medium text-green-800">GitHub connected as @{github?.meta?.login}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 p-3 bg-surface2 border border-border rounded-forge">
+            <div className="w-5 h-5 rounded-full bg-ink text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</div>
+            <div className="flex-1">
+              <p className="text-xs font-medium text-ink mb-2">Which repo is this project?</p>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search your repos..."
+                className="w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2 mb-2"
+              />
+              <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin">
+                {reposLoading ? (
+                  <p className="text-xs text-ink4 py-2 text-center">Loading repos…</p>
+                ) : filtered.length === 0 ? (
+                  <p className="text-xs text-ink4 py-2 text-center">No repos found</p>
+                ) : filtered.map(repo => (
+                  <button
+                    key={repo.id}
+                    onClick={() => handleLinkRepo(repo.full_name)}
+                    disabled={saving}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-forge border border-border hover:border-border2 hover:bg-surface text-left transition-colors disabled:opacity-50"
+                  >
+                    <span className="text-xs text-ink truncate">{repo.full_name}</span>
+                    <span className="tag tag-gray shrink-0 ml-2">{repo.private ? 'private' : 'public'}</span>
+                  </button>
+                ))}
+              </div>
+              {error && <p className="text-xs text-red mt-1">{error}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Done state */}
+      {isOAuthConnected && repoLinked && (
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-ink3">Account: <span className="font-medium text-ink">@{github?.meta?.login}</span></p>
+              <p className="text-xs text-ink3 mt-0.5">Repo: <span className="font-medium text-ink">{repoLinked}</span></p>
+            </div>
+            <button
+              onClick={() => { setSearch(''); setReposLoading(true); fetch('/api/github/repos').then(r => r.json()).then(d => setRepos(d.repos ?? [])).finally(() => setReposLoading(false)) }}
+              className="text-xs text-ink4 hover:text-ink transition-colors"
+            >
+              Change repo
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Software keys view ───────────────────────────────────────────────────────
 
 interface RepoContext {
@@ -885,17 +1055,17 @@ function SoftwareKeys({ guide }: { guide: BuildGuide | null }) {
           </p>
         </div>
       )}
-      <div className="px-4 py-3 bg-surface2 border border-border rounded-forge">
-        <p className="text-xs text-ink3">
-          Showing <span className="font-medium text-ink">{visibleServices.length} services</span>
-          {repoCtx?.hasEnvExample
-            ? <> detected from your <span className="font-mono text-ink">.env.example</span> and <span className="font-mono text-ink">package.json</span></>
-            : guide
-              ? <> for your stack: {(guide.stack ?? []).map(s => s.name).join(', ')}</>
-              : <> (connect a repo or complete Build Guide to filter by project)</>
-          }.
-        </p>
-      </div>
+      {(repoCtx?.hasEnvExample || guide) && (
+        <div className="px-4 py-3 bg-surface2 border border-border rounded-forge">
+          <p className="text-xs text-ink3">
+            Showing <span className="font-medium text-ink">{visibleServices.length} services</span>
+            {repoCtx?.hasEnvExample
+              ? <> detected from your <span className="font-mono text-ink">.env.example</span> and <span className="font-mono text-ink">package.json</span></>
+              : <> for your stack: {(guide!.stack ?? []).map(s => s.name).join(', ')}</>
+            }.
+          </p>
+        </div>
+      )}
 
       {/* .env.local auto-fill */}
       <div className="px-4 py-3 bg-surface border border-border rounded-forge space-y-2">
@@ -953,10 +1123,12 @@ function SoftwareKeys({ guide }: { guide: BuildGuide | null }) {
                 <>
                   <p className="text-[10px] font-semibold text-ink4 uppercase tracking-wider px-1 pt-2">Integrations</p>
                   {integrations.map(service => (
-                    <ServiceCard key={service.id} service={service} state={states[service.id]}
-                      onTest={handleTest} onKeyChange={onKeyChange} highlight={highlightId ?? undefined}
-                      detectedInCode={detectedIds.includes(service.id)} onOAuthSuccess={handleOAuthSuccess}
-                      projectId={activeProject?.id} />
+                    service.id === 'github'
+                      ? <GitHubSetupCard key="github" onOAuthSuccess={handleOAuthSuccess} projectId={activeProject?.id} />
+                      : <ServiceCard key={service.id} service={service} state={states[service.id]}
+                          onTest={handleTest} onKeyChange={onKeyChange} highlight={highlightId ?? undefined}
+                          detectedInCode={detectedIds.includes(service.id)} onOAuthSuccess={handleOAuthSuccess}
+                          projectId={activeProject?.id} />
                   ))}
                 </>
               )}
