@@ -45,37 +45,37 @@ function FeatureSuggestionsInner() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
 
-  // Restore cache on project change
+  // Load cached data; auto-run only if no cache exists
   useEffect(() => {
     if (!activeProject?.id) {
       setResult(null)
       return
     }
+
+    // 1. Check Supabase-persisted data on project record
+    if (activeProject.feature_suggestions) {
+      setResult(activeProject.feature_suggestions as unknown as SuggestionsResult)
+      return
+    }
+
+    // 2. Check localStorage
     const cached = localStorage.getItem(`forge:suggestions:${activeProject.id}`)
     if (cached) {
       try {
         setResult(JSON.parse(cached))
+        return
       } catch {
         // ignore parse errors
       }
-    } else {
-      setResult(null)
     }
-  }, [activeProject?.id])
 
-  // Auto-load when conditions are met
-  useEffect(() => {
-    if (
-      activeProject?.github_repo &&
-      github &&
-      !result &&
-      !loading &&
-      !analyzing
-    ) {
+    // 3. No cache — auto-run if repo + GitHub connected
+    setResult(null)
+    if (activeProject.github_repo && github) {
       runAnalysis()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.github_repo, github])
+  }, [activeProject?.id, github])
 
   const runAnalysis = async () => {
     if (!activeProject?.github_repo || !activeProject?.id) return
@@ -108,6 +108,12 @@ function FeatureSuggestionsInner() {
         `forge:suggestions:${activeProject.id}`,
         JSON.stringify(analyzed)
       )
+      // Persist to Supabase so it survives across devices
+      void fetch(`/api/projects/${activeProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feature_suggestions: analyzed }),
+      })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -119,6 +125,11 @@ function FeatureSuggestionsInner() {
   const handleRegenerate = () => {
     if (activeProject?.id) {
       localStorage.removeItem(`forge:suggestions:${activeProject.id}`)
+      void fetch(`/api/projects/${activeProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feature_suggestions: null }),
+      })
     }
     setResult(null)
     runAnalysis()

@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.track !== undefined) updates.track = body.track
     if (body.app_url !== undefined) updates.app_url = body.app_url
     if (body.is_public !== undefined) updates.is_public = body.is_public
+    if (body.feature_suggestions !== undefined) updates.feature_suggestions = body.feature_suggestions
     if (step) {
       const existing: string[] = project.steps_completed ?? []
       if (!existing.includes(step)) {

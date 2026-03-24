@@ -193,6 +193,7 @@ export interface Project {
   steps_completed: string[]
   github_repo: string | null
   vercel_url: string | null
+  feature_suggestions: Record<string, unknown> | null
   created_at: string
 }
 
