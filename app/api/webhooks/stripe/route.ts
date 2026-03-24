@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceClient()
 
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.CheckoutSession
+    const session = event.data.object as Stripe.Checkout.Session
     const { userId, tier, role } = session.metadata ?? {}
     if (userId && tier && role) {
       await supabase.from('user_profiles').upsert({
