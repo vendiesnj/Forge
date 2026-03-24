@@ -24,11 +24,10 @@ export async function checkRateLimit(
   if ((count ?? 0) >= limit) return false
 
   // Log usage fire-and-forget — don't block the request on this
-  supabase
+  void supabase
     .from('api_usage')
     .insert({ user_id: userId, action })
     .then(() => {})
-    .catch(() => {})
 
   return true
 }
