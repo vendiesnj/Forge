@@ -303,7 +303,12 @@ function ProjectUIEditor() {
   const [prError, setPrError] = useState('')
 
   const repo = activeProject?.github_repo
-  const appUrl = activeProject?.app_url
+  const rawUrl = activeProject?.app_url
+  const appUrl = rawUrl
+    ? rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+      ? rawUrl
+      : `https://${rawUrl}`
+    : undefined
 
   useEffect(() => {
     if (!repo) return
