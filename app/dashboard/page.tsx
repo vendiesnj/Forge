@@ -29,8 +29,8 @@ const STAGES: { value: Stage; emoji: string; label: string; desc: string; ctaLab
     value: 'built',
     emoji: '🚀',
     label: 'Already built',
-    desc: 'Live app — list on marketplace and grow',
-    ctaLabel: 'List on Marketplace →',
+    desc: 'Connect your repo, run analysis, then grow',
+    ctaLabel: 'Go to Overview →',
   },
 ]
 
@@ -305,9 +305,9 @@ function EmptyState() {
         triggerBackgroundAnalyses(project, 'intermediate')
         router.push('/dashboard/idea-lab?autorun=1')
       } else if (selectedStage === 'building') {
-        router.push('/dashboard/features')
+        router.push(idea.trim() ? '/dashboard/idea-lab?autorun=1' : '/dashboard/idea-lab')
       } else {
-        router.push('/dashboard/marketplace')
+        router.push('/dashboard/overview')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
