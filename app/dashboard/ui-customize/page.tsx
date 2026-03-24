@@ -155,6 +155,23 @@ function InteractivePreview({ appUrl, annotations, onAdd, onUpdate, onRemove }: 
   const overlayRef = useRef<HTMLDivElement>(null)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const isDragging = useRef(false)
+  const [iframeBlocked, setIframeBlocked] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  // Detect X-Frame-Options / CSP block: iframe loads but stays empty
+  useEffect(() => {
+    setIframeBlocked(false)
+    const timer = setTimeout(() => {
+      try {
+        // If cross-origin blocked, accessing contentDocument throws or is null
+        const doc = iframeRef.current?.contentDocument
+        if (doc === null) setIframeBlocked(true)
+      } catch {
+        setIframeBlocked(true)
+      }
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [appUrl])
 
   const pct = useCallback((clientX: number, clientY: number) => {
     const rect = overlayRef.current!.getBoundingClientRect()
@@ -225,12 +242,27 @@ function InteractivePreview({ appUrl, annotations, onAdd, onUpdate, onRemove }: 
 
       {/* Iframe + overlay */}
       <div className="relative" style={{ height: 'calc(100% - 33px)' }}>
-        <iframe
-          src={appUrl}
-          className="w-full h-full"
-          style={{ border: 'none', pointerEvents: 'none' }}
-          title="App preview"
-        />
+        {iframeBlocked ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-surface2 text-center p-8">
+            <p className="text-sm font-medium text-ink">This site blocks embedding</p>
+            <p className="text-xs text-ink4 max-w-xs">
+              <strong>{appUrl}</strong> prevents iframes via security headers (X-Frame-Options / CSP).
+              You can still use the annotation tools below to describe changes, then generate a Claude Code prompt.
+            </p>
+            <a href={appUrl} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-ink3 underline hover:text-ink">
+              Open site in new tab ↗
+            </a>
+          </div>
+        ) : (
+          <iframe
+            ref={iframeRef}
+            src={appUrl}
+            className="w-full h-full"
+            style={{ border: 'none', pointerEvents: 'none' }}
+            title="App preview"
+          />
+        )}
 
         {/* SVG layer for drag arrows */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" style={{ overflow: 'visible' }}>
