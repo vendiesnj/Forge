@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { UserButton } from '@clerk/nextjs'
 import { cn } from '@/lib/utils'
 
-const nav = [
+const nav: { label: string; href: string; icon: string; soon?: boolean }[] = [
   { label: 'Discover', href: '/org', icon: '◎' },
   { label: 'Saved', href: '/org/saved', icon: '♡' },
   { label: 'Messages', href: '/org/messages', icon: '✉' },
