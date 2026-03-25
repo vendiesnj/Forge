@@ -198,10 +198,77 @@ export async function POST(req: NextRequest) {
     const extras = (await Promise.all(links.map(l => fetchPage(l, cookie)))).filter(Boolean) as Array<{ url: string; html: string; title: string }>
     const pages = [authedMain, ...extras]
 
-    // Build the prompt
-    const pagesBlock = pages
-      .map((p, i) => `=== PAGE ${i + 1}: "${p.title}" ===\nURL: ${p.url}\n\n${p.html}`)
-      .join('\n\n')
+    // Extract meaningful signals from HTML even when JS hasn't rendered the content
+    function extractSignals(html: string, url: string): string {
+      const get = (pattern: RegExp) => pattern.exec(html)?.[1]?.trim() ?? ''
+      const getAll = (pattern: RegExp) => [...html.matchAll(pattern)].map(m => m[1].trim()).filter(Boolean)
+
+      const signals: string[] = []
+
+      const title = get(/<title[^>]*>([^<]+)<\/title>/i)
+      if (title) signals.push(`Page title: ${title}`)
+
+      const metaDesc = get(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+        || get(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i)
+      if (metaDesc) signals.push(`Meta description: ${metaDesc}`)
+
+      const ogTitle = get(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+        || get(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)
+      if (ogTitle && ogTitle !== title) signals.push(`OG title: ${ogTitle}`)
+
+      const ogDesc = get(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+        || get(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i)
+      if (ogDesc && ogDesc !== metaDesc) signals.push(`OG description: ${ogDesc}`)
+
+      const h1s = getAll(/<h1[^>]*>([^<]{3,100})<\/h1>/gi).slice(0, 3)
+      if (h1s.length) signals.push(`H1 headings: ${h1s.join(' | ')}`)
+
+      const h2s = getAll(/<h2[^>]*>([^<]{3,80})<\/h2>/gi).slice(0, 5)
+      if (h2s.length) signals.push(`H2 headings: ${h2s.join(' | ')}`)
+
+      // Nav link text (gives a map of the app's sections)
+      const navLinks = getAll(/<(?:nav|header)[^>]*>[\s\S]*?<\/(?:nav|header)>/gi)
+        .flatMap(block => [...block.matchAll(/href=["']([^"']+)["'][^>]*>([^<]{2,30})<\/a>/gi)].map(m => m[2].trim()))
+        .filter(Boolean).slice(0, 10)
+      if (navLinks.length) signals.push(`Navigation items: ${navLinks.join(', ')}`)
+
+      // Button text (reveals actions available)
+      const buttons = getAll(/<button[^>]*>([^<]{3,50})<\/button>/gi).slice(0, 8)
+      if (buttons.length) signals.push(`Buttons on page: ${buttons.join(', ')}`)
+
+      // Internal routes visible in links (reveals app structure)
+      const base = new URL(url).hostname
+      const routes = [...new Set(
+        getAll(/href=["']([^"'#?]+)["']/gi)
+          .filter(h => !h.startsWith('http') || h.includes(base))
+          .map(h => h.replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '') || '/')
+      )].slice(0, 15)
+      if (routes.length) signals.push(`App routes visible: ${routes.join(', ')}`)
+
+      return signals.join('\n')
+    }
+
+    // Detect thin HTML (JavaScript-rendered apps show almost no content server-side)
+    function stripTags(html: string) { return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() }
+    const thinPages = pages.filter(p => stripTags(p.html).length < 400)
+    const isJsRendered = thinPages.length > 0
+
+    // Build per-page blocks with auto-extracted signals
+    const pagesBlock = pages.map((p, i) => {
+      const signals = extractSignals(p.html, p.url)
+      const isThin = stripTags(p.html).length < 400
+      return [
+        `=== PAGE ${i + 1}: "${p.title}" ===`,
+        `URL: ${p.url}`,
+        signals ? `\nAUTO-EXTRACTED SIGNALS (reliable even for JS apps):\n${signals}` : '',
+        isThin ? '\n[Note: Raw HTML is mostly empty — this page loads its content with JavaScript. Use the signals above.]' : '',
+        `\nRAW HTML:\n${p.html}`,
+      ].filter(Boolean).join('\n')
+    }).join('\n\n')
+
+    const jsRenderedNote = isJsRendered ? `
+⚠️ IMPORTANT: ${thinPages.length} of ${pages.length} pages appear to load their content via JavaScript (React/Next.js style). The raw HTML snapshots will be mostly empty. Focus on the AUTO-EXTRACTED SIGNALS sections for each page — those are pulled directly from the HTML and are reliable. Routes, navigation items, headings, and meta descriptions give you a clear picture of the app's structure and purpose even without the rendered content. Flag this limitation briefly in your summary.
+` : ''
 
     const prompt = `You are a UX tester who has never seen this app before. Your job is to simulate being a real user visiting it for the first time and report back in plain, simple English — as if you're texting a friend about your experience.
 
@@ -214,7 +281,7 @@ IMPORTANT RULES FOR HOW TO WRITE:
 - Good: "It's not obvious which button you're supposed to click — three buttons look equally important"
 - Focus on what a confused real user would actually experience
 
-Here are all the pages from the app:
+${jsRenderedNote}Here are all the pages from the app:
 
 ${pagesBlock}
 

@@ -27,12 +27,17 @@ function SeverityDot({ severity }: { severity: 'high' | 'medium' | 'low' }) {
 
 // ─── Iframe preview ───────────────────────────────────────────────────────────
 
+const isLocalhost = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1)/.test(url)
+
 function SitePreview({ url }: { url: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [blocked, setBlocked] = useState(false)
+  const [showFix, setShowFix] = useState(false)
+  const local = isLocalhost(url)
 
   useEffect(() => {
     setBlocked(false)
+    setShowFix(false)
     const timer = setTimeout(() => {
       try {
         if (iframeRef.current?.contentDocument === null) setBlocked(true)
@@ -42,7 +47,7 @@ function SitePreview({ url }: { url: string }) {
   }, [url])
 
   return (
-    <div className="border border-border rounded-forge overflow-hidden bg-surface2" style={{ height: 280 }}>
+    <div className="border border-border rounded-forge overflow-hidden bg-surface2" style={{ height: blocked && showFix ? 'auto' : 280 }}>
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface shrink-0">
         <div className="flex gap-1">
           <div className="w-2 h-2 rounded-full bg-red-400" />
@@ -52,14 +57,55 @@ function SitePreview({ url }: { url: string }) {
         <span className="text-[10px] text-ink4 truncate flex-1">{url}</span>
         <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-ink4 hover:text-ink3 shrink-0">↗</a>
       </div>
-      <div style={{ height: 'calc(100% - 33px)' }}>
+      <div style={{ minHeight: blocked ? undefined : 'calc(280px - 33px)' }}>
         {blocked ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-center p-4">
-            <p className="text-xs text-ink4">Preview blocked by site</p>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-ink3 underline hover:text-ink">Open in new tab ↗</a>
+          <div className="p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <span className="text-amber text-sm shrink-0">⚠</span>
+              <div>
+                <p className="text-xs font-medium text-ink">Preview is blocked</p>
+                <p className="text-[11px] text-ink3 mt-0.5">
+                  Your site has security settings that block it from being embedded here. The audit still ran correctly — this only affects the visual preview.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <a href={url} target="_blank" rel="noopener noreferrer"
+                className="px-3 py-1.5 border border-border rounded-forge text-xs text-ink3 hover:text-ink hover:border-border2 transition-colors">
+                Open in new tab ↗
+              </a>
+              <button onClick={() => setShowFix(v => !v)}
+                className="px-3 py-1.5 border border-border rounded-forge text-xs text-ink3 hover:text-ink hover:border-border2 transition-colors">
+                {showFix ? 'Hide fix' : 'How to enable preview'}
+              </button>
+            </div>
+            {showFix && (
+              <div className="bg-ink rounded-forge p-3 space-y-2">
+                <p className="text-[11px] text-white/70">
+                  {local
+                    ? <>Add this to your <code className="text-white">next.config.js</code>:</>
+                    : <>Your site is blocking previews. If this is your app, add this to your <code className="text-white">next.config.js</code> and redeploy:</>
+                  }
+                </p>
+                <pre className="text-[11px] text-white font-mono whitespace-pre leading-relaxed">{`async headers() {
+  return [{
+    source: '/(.*)',
+    headers: [{
+      key: 'X-Frame-Options',
+      value: 'ALLOWALL',
+    }],
+  }]
+},`}</pre>
+                <p className="text-[10px] text-white/50">
+                  {local
+                    ? 'Restart your dev server after saving.'
+                    : 'Redeploy after saving. The audit results above are still accurate — this only affects the visual preview.'}
+                </p>
+              </div>
+            )}
           </div>
         ) : (
-          <iframe ref={iframeRef} src={url} className="w-full h-full" style={{ border: 'none' }} title="Page preview" />
+          <iframe ref={iframeRef} src={url} className="w-full" style={{ border: 'none', height: 247 }} title="Page preview" />
         )}
       </div>
     </div>
