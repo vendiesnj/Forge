@@ -31,6 +31,7 @@ const getStageNav = (stage: 'idea' | 'building' | 'built' | null) => {
         items: [
           { label: 'Build Guide', href: '/dashboard/build-guide' },
           { label: 'UI Customize', href: '/dashboard/ui-customize' },
+          { label: 'UX Audit', href: '/dashboard/ux-audit' },
         ],
       },
       {
@@ -65,6 +66,7 @@ const getStageNav = (stage: 'idea' | 'building' | 'built' | null) => {
           { label: 'Build Guide', href: '/dashboard/build-guide' },
           { label: 'Feature Suggestions', href: '/dashboard/feature-suggestions' },
           { label: 'UI Customize', href: '/dashboard/ui-customize' },
+          { label: 'UX Audit', href: '/dashboard/ux-audit' },
           { label: 'Build Requests', href: '/dashboard/requests' },
         ],
       },
@@ -99,6 +101,7 @@ const getStageNav = (stage: 'idea' | 'building' | 'built' | null) => {
         { label: 'Build Guide', href: '/dashboard/build-guide' },
         { label: 'Feature Suggestions', href: '/dashboard/feature-suggestions' },
         { label: 'UI Customize', href: '/dashboard/ui-customize' },
+        { label: 'UX Audit', href: '/dashboard/ux-audit' },
       ],
     },
     {
@@ -141,6 +144,7 @@ const ALL_PAGES = [
   { label: 'Build Requests', href: '/dashboard/requests' },
   { label: 'Feature Suggestions', href: '/dashboard/feature-suggestions' },
   { label: 'UI Customize', href: '/dashboard/ui-customize' },
+  { label: 'UX Audit', href: '/dashboard/ux-audit' },
   { label: 'Security', href: '/dashboard/security' },
   { label: 'Billing', href: '/dashboard/billing' },
   { label: 'My Profile', href: '/dashboard/profile' },
