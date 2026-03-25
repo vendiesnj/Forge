@@ -136,38 +136,31 @@ function SitePreview({ url }: { url: string }) {
 
 // ─── Auth types ───────────────────────────────────────────────────────────────
 
-type AuthType = 'none' | 'cookie' | 'form'
+type AuthType = 'none' | 'credentials' | 'cookie'
 
 interface AuthState {
   type: AuthType
-  cookie: string
-  loginUrl: string
-  usernameField: string
   username: string
-  passwordField: string
   password: string
+  cookie: string
 }
 
-const defaultAuth: AuthState = {
-  type: 'none',
-  cookie: '',
-  loginUrl: '',
-  usernameField: 'email',
-  username: '',
-  passwordField: 'password',
-  password: '',
-}
+const defaultAuth: AuthState = { type: 'none', username: '', password: '', cookie: '' }
 
 // ─── Auth panel ───────────────────────────────────────────────────────────────
 
-function AuthPanel({ auth, baseUrl, onChange }: {
+function AuthPanel({ auth, onChange }: {
   auth: AuthState
-  baseUrl: string
   onChange: (a: AuthState) => void
 }) {
   const [open, setOpen] = useState(false)
-
   const set = (patch: Partial<AuthState>) => onChange({ ...auth, ...patch })
+
+  const label = auth.type === 'credentials'
+    ? 'Email & password'
+    : auth.type === 'cookie'
+    ? 'Session cookie'
+    : null
 
   return (
     <div className="border border-border rounded-forge overflow-hidden">
@@ -176,111 +169,114 @@ function AuthPanel({ auth, baseUrl, onChange }: {
         className="w-full flex items-center justify-between px-4 py-2.5 bg-surface text-left hover:bg-surface2 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-ink">Authentication</span>
-          {auth.type !== 'none' && (
+          <span className="text-xs font-medium text-ink">
+            {label ? `Signed in as: ${auth.type === 'credentials' ? auth.username || 'test user' : 'session cookie'}` : 'Audit behind a login?'}
+          </span>
+          {label && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-bg border border-amber-border text-amber font-medium">
-              {auth.type === 'cookie' ? 'Session cookie' : 'Form login'}
+              {label}
             </span>
           )}
         </div>
-        <span className="text-ink4 text-xs">{open ? '▲' : '▼'}</span>
+        <span className="text-ink4 text-[10px]">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-border p-4 space-y-4 bg-surface2">
-          {/* Auth type selector */}
-          <div className="flex gap-2">
-            {(['none', 'cookie', 'form'] as AuthType[]).map(t => (
+        <div className="border-t border-border bg-surface2">
+          {/* Method tabs */}
+          <div className="flex border-b border-border">
+            {([
+              ['none', 'No login needed'],
+              ['credentials', 'Email & password'],
+              ['cookie', 'Already logged in'],
+            ] as [AuthType, string][]).map(([t, label]) => (
               <button
                 key={t}
                 onClick={() => set({ type: t })}
                 className={cn(
-                  'flex-1 py-1.5 text-xs rounded-forge border transition-colors',
+                  'flex-1 py-2 text-xs transition-colors border-b-2 -mb-px',
                   auth.type === t
-                    ? 'bg-ink text-white border-ink'
-                    : 'bg-surface border-border text-ink3 hover:text-ink hover:border-border2'
+                    ? 'border-ink text-ink font-medium'
+                    : 'border-transparent text-ink4 hover:text-ink3'
                 )}
               >
-                {t === 'none' ? 'None' : t === 'cookie' ? 'Session cookie' : 'Login form'}
+                {label}
               </button>
             ))}
           </div>
 
-          {auth.type === 'cookie' && (
-            <div className="space-y-2">
-              <div className="px-3 py-2 bg-surface border border-border rounded-forge text-[11px] text-ink3 space-y-1">
-                <p className="font-medium text-ink">How to get your session cookie:</p>
-                <p>1. Log into your app in a browser tab</p>
-                <p>2. Open DevTools → Network → click any request</p>
-                <p>3. Find the <strong>Cookie</strong> request header and copy its value</p>
-              </div>
-              <textarea
-                value={auth.cookie}
-                onChange={e => set({ cookie: e.target.value })}
-                placeholder="session=abc123; __Host-next-auth.csrf-token=xyz..."
-                rows={3}
-                className="w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2 resize-none font-mono"
-              />
-            </div>
-          )}
+          <div className="p-4">
+            {auth.type === 'none' && (
+              <p className="text-[11px] text-ink4">
+                The audit will run on publicly accessible pages only.
+              </p>
+            )}
 
-          {auth.type === 'form' && (
-            <div className="space-y-3">
-              <div className="px-3 py-2 bg-surface border border-border rounded-forge text-[11px] text-ink3">
-                Works best with traditional form-based login pages. For apps using OAuth, magic links, or passkeys, use the session cookie method instead.
+            {auth.type === 'credentials' && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-ink3">
+                  We'll find your login page automatically and sign in for you. Use a test account — don't use production admin credentials.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Email or username</label>
+                    <input
+                      value={auth.username}
+                      onChange={e => set({ username: e.target.value })}
+                      placeholder="you@example.com"
+                      autoComplete="off"
+                      className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Password</label>
+                    <input
+                      type="password"
+                      value={auth.password}
+                      onChange={e => set({ password: e.target.value })}
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-ink4">
+                  Doesn't work with Google/GitHub login, magic links, or passkeys — use "Already logged in" instead.
+                </p>
               </div>
-              <div>
-                <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Login page URL</label>
-                <input
-                  value={auth.loginUrl}
-                  onChange={e => set({ loginUrl: e.target.value })}
-                  placeholder={baseUrl ? `${baseUrl}/login` : 'https://yourapp.com/login'}
-                  className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
+            )}
+
+            {auth.type === 'cookie' && (
+              <div className="space-y-3">
+                <div className="space-y-2 text-[11px] text-ink3">
+                  <p className="font-medium text-ink">How to copy your session:</p>
+                  <div className="space-y-1.5">
+                    {[
+                      'Log into your app in another browser tab',
+                      'Press F12 (or Cmd+Option+I on Mac) to open DevTools',
+                      'Click the Network tab, then reload the page',
+                      'Click any request in the list',
+                      'Under "Request Headers", find Cookie and copy the full value',
+                    ].map((step, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full bg-ink text-white flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5">
+                          {i + 1}
+                        </span>
+                        <span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <textarea
+                  value={auth.cookie}
+                  onChange={e => set({ cookie: e.target.value })}
+                  placeholder="Paste cookie value here…"
+                  rows={3}
+                  className="w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2 resize-none font-mono"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Username field name</label>
-                  <input
-                    value={auth.usernameField}
-                    onChange={e => set({ usernameField: e.target.value })}
-                    placeholder="email"
-                    className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Password field name</label>
-                  <input
-                    value={auth.passwordField}
-                    onChange={e => set({ passwordField: e.target.value })}
-                    placeholder="password"
-                    className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Username / Email</label>
-                  <input
-                    value={auth.username}
-                    onChange={e => set({ username: e.target.value })}
-                    placeholder="you@example.com"
-                    className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-ink4 uppercase tracking-wider">Password</label>
-                  <input
-                    type="password"
-                    value={auth.password}
-                    onChange={e => set({ password: e.target.value })}
-                    placeholder="••••••••"
-                    className="mt-1 w-full text-xs bg-surface border border-border rounded-forge px-3 py-2 text-ink placeholder-ink4 focus:outline-none focus:border-border2"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -338,13 +334,10 @@ function UXAuditInner() {
     try {
       const authPayload = authState.type === 'none' ? undefined : {
         type: authState.type,
-        ...(authState.type === 'cookie' ? { cookie: authState.cookie } : {
-          loginUrl: authState.loginUrl,
-          usernameField: authState.usernameField,
-          username: authState.username,
-          passwordField: authState.passwordField,
-          password: authState.password,
-        }),
+        ...(authState.type === 'cookie'
+          ? { cookie: authState.cookie }
+          : { username: authState.username, password: authState.password }
+        ),
       }
 
       const res = await fetch('/api/ux-audit', {
@@ -371,9 +364,6 @@ function UXAuditInner() {
     }
   }
 
-  const baseUrl = (() => {
-    try { return new URL(url.includes('://') ? url : `https://${url}`).origin } catch { return '' }
-  })()
 
   return (
     <>
@@ -406,7 +396,7 @@ function UXAuditInner() {
             </button>
           </div>
 
-          <AuthPanel auth={authState} baseUrl={baseUrl} onChange={setAuthState} />
+          <AuthPanel auth={authState} onChange={setAuthState} />
 
           {url.includes('localhost') && (
             <p className="text-[11px] text-ink4 px-1">

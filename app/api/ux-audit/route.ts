@@ -34,76 +34,106 @@ export interface UXAuditResult {
 }
 
 interface AuthOptions {
-  type: 'cookie' | 'form'
-  // cookie auth
+  type: 'cookie' | 'credentials'
   cookie?: string
-  // form auth
-  loginUrl?: string
-  usernameField?: string
   username?: string
-  passwordField?: string
   password?: string
 }
 
-// Extract all Set-Cookie values and return as a single Cookie header string
+const UA = 'ForgeUXAudit/1.0'
+
+// Collapse all Set-Cookie headers into a single Cookie string
 function extractCookieString(headers: Headers): string {
-  // Node 18+ has getSetCookie(); fall back to single get()
   const raw: string[] = (headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.()
     ?? [headers.get('set-cookie')].filter(Boolean) as string[]
   return raw.map(c => c.split(';')[0]).join('; ')
 }
 
-// Parse internal links from HTML, resolved against the base URL
-function extractInternalLinks(html: string, baseUrl: string): string[] {
+// Scan a page's HTML for a login URL — first by link text/href, then common paths
+async function findLoginUrl(baseUrl: string, html: string): Promise<string | null> {
   const base = new URL(baseUrl)
-  const seen = new Set<string>()
-  const links: string[] = []
 
-  for (const m of html.matchAll(/href=["']([^"'#?][^"']*)/g)) {
-    try {
-      const resolved = new URL(m[1], baseUrl)
-      if (resolved.hostname !== base.hostname) continue
-      const clean = resolved.origin + resolved.pathname.replace(/\/$/, '') || '/'
-      if (!seen.has(clean)) {
-        seen.add(clean)
-        links.push(clean)
-      }
-    } catch {}
+  // 1. Find a login/signin link in the page HTML
+  for (const m of html.matchAll(/href=["']([^"']+)["']/gi)) {
+    const href = m[1].toLowerCase()
+    if (/\/(login|signin|sign-in|log-in|auth\/login|auth\/signin)/.test(href)) {
+      try {
+        const resolved = new URL(m[1], baseUrl)
+        if (resolved.hostname === base.hostname) return resolved.href
+      } catch {}
+    }
   }
 
-  return links
+  // 2. Try common login paths
+  const candidates = [
+    '/login', '/signin', '/sign-in', '/log-in',
+    '/auth/login', '/auth/signin', '/auth/sign-in',
+    '/user/login', '/users/sign_in', '/account/login',
+  ]
+  const results = await Promise.allSettled(
+    candidates.map(async path => {
+      const url = new URL(path, baseUrl).href
+      const res = await fetch(url, { method: 'HEAD', headers: { 'User-Agent': UA }, redirect: 'follow' })
+      if (res.ok) return url
+      throw new Error('not found')
+    })
+  )
+  for (const r of results) {
+    if (r.status === 'fulfilled') return r.value
+  }
+
+  return null
 }
 
-// Extract page title from HTML
-function extractTitle(html: string): string {
-  const m = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-  return m ? m[1].trim() : 'Untitled'
+// Parse a login page's HTML to find the email/username and password input field names
+function findFormFields(html: string): { usernameField: string; passwordField: string } {
+  // Password field name
+  const pwMatch =
+    html.match(/name=["']([^"']+)["'][^>]*type=["']password["']/i) ||
+    html.match(/type=["']password["'][^>]*name=["']([^"']+)["']/i)
+  const passwordField = pwMatch?.[1] ?? 'password'
+
+  // Email / username field name — look for type=email first, then name heuristics
+  const emailMatch =
+    html.match(/name=["']([^"']+)["'][^>]*type=["']email["']/i) ||
+    html.match(/type=["']email["'][^>]*name=["']([^"']+)["']/i) ||
+    html.match(/name=["'](email|username|user_?name|login|identifier)["']/i)
+  const usernameField = emailMatch?.[1] ?? 'email'
+
+  return { usernameField, passwordField }
 }
 
-// Attempt form-based login; returns cookie string or throws
-async function loginWithForm(opts: AuthOptions): Promise<string> {
-  const loginUrl = opts.loginUrl!
-  const ua = 'ForgeUXAudit/1.0'
+// Attempt credential-based login; returns session cookie string or throws a user-readable error
+async function loginWithCredentials(
+  baseUrl: string,
+  mainHtml: string,
+  username: string,
+  password: string,
+): Promise<string> {
+  const loginUrl = await findLoginUrl(baseUrl, mainHtml)
+  if (!loginUrl) {
+    throw new Error(
+      "Couldn't find a login page automatically. Try the session cookie method instead."
+    )
+  }
 
-  // 1. GET login page — capture any initial cookies + CSRF token
-  const getRes = await fetch(loginUrl, {
-    headers: { 'User-Agent': ua },
-    redirect: 'follow',
-  })
-  const initialCookie = extractCookieString(getRes.headers)
-  const loginHtml = await getRes.text()
+  // Fetch the login page to get initial cookies + CSRF tokens
+  const loginPageRes = await fetch(loginUrl, { headers: { 'User-Agent': UA }, redirect: 'follow' })
+  const initialCookie = extractCookieString(loginPageRes.headers)
+  const loginHtml = await loginPageRes.text()
 
-  // Try to find common CSRF field patterns
+  const { usernameField, passwordField } = findFormFields(loginHtml)
+
+  // Look for CSRF token in common patterns
   const csrfMatch =
     loginHtml.match(/name=["']_?csrf(?:_?token)?["'][^>]*value=["']([^"']+)["']/i) ||
     loginHtml.match(/value=["']([^"']+)["'][^>]*name=["']_?csrf(?:_?token)?["']/i) ||
     loginHtml.match(/"csrfToken"\s*:\s*"([^"]+)"/i)
   const csrfToken = csrfMatch?.[1]
 
-  // 2. POST credentials
   const body = new URLSearchParams({
-    [opts.usernameField ?? 'email']: opts.username ?? '',
-    [opts.passwordField ?? 'password']: opts.password ?? '',
+    [usernameField]: username,
+    [passwordField]: password,
     ...(csrfToken ? { _csrf: csrfToken, csrf_token: csrfToken, csrfToken } : {}),
   })
 
@@ -112,52 +142,66 @@ async function loginWithForm(opts: AuthOptions): Promise<string> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Cookie': initialCookie,
-      'User-Agent': ua,
+      'User-Agent': UA,
       'Referer': loginUrl,
     },
     body: body.toString(),
-    redirect: 'manual', // capture Set-Cookie before redirect
+    redirect: 'manual', // don't follow — we need Set-Cookie from this response
   })
 
   const sessionCookie = extractCookieString(postRes.headers)
-  const combined = [initialCookie, sessionCookie].filter(Boolean).join('; ')
-
-  // status 302/303 = redirect after login = success
-  if (postRes.status < 300 || postRes.status >= 400) {
-    // Might still have succeeded (SPAs return 200); check we got a new cookie
-    if (!sessionCookie) throw new Error('Login did not return a session cookie — check your credentials and login URL')
+  if (!sessionCookie && postRes.status >= 400) {
+    throw new Error(
+      'Login failed — your credentials may be incorrect, or this app uses OAuth/magic links. ' +
+      'Try the session cookie method instead.'
+    )
   }
 
-  return combined
+  return [initialCookie, sessionCookie].filter(Boolean).join('; ')
 }
 
-// Fetch one page; return { html, title } or null on error
-async function fetchPage(url: string, cookie: string): Promise<{ url: string; html: string; title: string } | null> {
+// Fetch one page with optional auth cookie
+async function fetchPage(
+  url: string,
+  cookie: string,
+): Promise<{ url: string; html: string; title: string } | null> {
   try {
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), 10000)
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        'User-Agent': 'ForgeUXAudit/1.0',
-        ...(cookie ? { Cookie: cookie } : {}),
-      },
+      headers: { 'User-Agent': UA, ...(cookie ? { Cookie: cookie } : {}) },
     })
     clearTimeout(t)
     if (!res.ok) return null
     const html = await res.text()
-    return { url, html: html.slice(0, 8000), title: extractTitle(html) }
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() ?? 'Untitled'
+    return { url, html: html.slice(0, 8000), title }
   } catch {
     return null
   }
 }
 
+// Parse internal links from HTML
+function extractInternalLinks(html: string, baseUrl: string): string[] {
+  const base = new URL(baseUrl)
+  const seen = new Set<string>()
+  const links: string[] = []
+  for (const m of html.matchAll(/href=["']([^"'#?][^"']*)/g)) {
+    try {
+      const resolved = new URL(m[1], baseUrl)
+      if (resolved.hostname !== base.hostname) continue
+      const clean = resolved.origin + resolved.pathname.replace(/\/$/, '') || '/'
+      if (!seen.has(clean)) { seen.add(clean); links.push(clean) }
+    } catch {}
+  }
+  return links
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const allowed = await checkRateLimit(userId, 'ux_audit', 10)
     if (!allowed) {
@@ -174,13 +218,27 @@ export async function POST(req: NextRequest) {
     const normalizedUrl = url.startsWith('http://') || url.startsWith('https://')
       ? url : `https://${url}`
 
+    // ── Fetch the main page (no auth yet) ─────────────────────────────────
+    const mainPage = await fetchPage(normalizedUrl, '')
+    if (!mainPage) {
+      return NextResponse.json(
+        { error: 'Could not reach that URL. Check it is running and accessible.' },
+        { status: 400 }
+      )
+    }
+
     // ── Resolve auth cookie ────────────────────────────────────────────────
     let cookie = ''
     if (authOpts?.type === 'cookie' && authOpts.cookie) {
       cookie = authOpts.cookie.trim()
-    } else if (authOpts?.type === 'form') {
+    } else if (authOpts?.type === 'credentials' && authOpts.username && authOpts.password) {
       try {
-        cookie = await loginWithForm(authOpts)
+        cookie = await loginWithCredentials(
+          normalizedUrl,
+          mainPage.html,
+          authOpts.username,
+          authOpts.password,
+        )
       } catch (err) {
         return NextResponse.json(
           { error: err instanceof Error ? err.message : 'Login failed' },
@@ -189,22 +247,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Fetch main page ────────────────────────────────────────────────────
-    const mainPage = await fetchPage(normalizedUrl, cookie)
-    if (!mainPage) {
-      return NextResponse.json({ error: 'Could not fetch the page. Check the URL and any auth credentials.' }, { status: 400 })
-    }
+    // ── Re-fetch main page with auth if we now have a cookie ───────────────
+    const authedMain = cookie ? (await fetchPage(normalizedUrl, cookie) ?? mainPage) : mainPage
 
-    // ── Crawl internal links (up to 7 more pages) ─────────────────────────
-    const links = extractInternalLinks(mainPage.html, normalizedUrl)
+    // ── Crawl up to 7 more internal pages ─────────────────────────────────
+    const links = extractInternalLinks(authedMain.html, normalizedUrl)
       .filter(l => l !== normalizedUrl)
-      .slice(0, 14) // candidates
+      .slice(0, 7)
 
     const extras = (
-      await Promise.all(links.slice(0, 7).map(l => fetchPage(l, cookie)))
+      await Promise.all(links.map(l => fetchPage(l, cookie)))
     ).filter(Boolean) as Array<{ url: string; html: string; title: string }>
 
-    const pages = [mainPage, ...extras]
+    const pages = [authedMain, ...extras]
 
     // ── Build Claude prompt ────────────────────────────────────────────────
     const pagesBlock = pages
@@ -232,24 +287,15 @@ Return ONLY valid JSON:
   },
   "readability": {
     "score": 65,
-    "findings": [
-      {"type": "good", "description": "..."},
-      {"type": "issue", "description": "..."}
-    ]
+    "findings": [{"type": "good", "description": "..."}, {"type": "issue", "description": "..."}]
   },
   "accessibility": {
     "score": 55,
-    "findings": [
-      {"type": "good", "description": "..."},
-      {"type": "issue", "description": "..."}
-    ]
+    "findings": [{"type": "good", "description": "..."}, {"type": "issue", "description": "..."}]
   },
   "layout": {
     "score": 78,
-    "findings": [
-      {"type": "good", "description": "..."},
-      {"type": "issue", "description": "..."}
-    ]
+    "findings": [{"type": "good", "description": "..."}, {"type": "issue", "description": "..."}]
   },
   "recommendations": [
     {
@@ -263,13 +309,12 @@ Return ONLY valid JSON:
 }
 
 Rules:
-- Scores are 0-100; overallScore is the weighted average
-- Each category: 2-4 findings mixing goods and issues, referencing specific pages where relevant
-- recommendations: 3-6 items ordered by priority, each with a concrete fix
-- Be honest — avoid vague feedback like "consider improving contrast"`
+- Scores 0-100; overallScore is weighted average
+- Each category: 2-4 findings mixing goods and issues, referencing specific pages where helpful
+- recommendations: 3-6 items ordered by priority with concrete fixes
+- Be specific — avoid vague feedback`
 
     const result = await callClaudeJSON<UXAuditResult>(prompt)
-
     return NextResponse.json({ result })
   } catch (err) {
     console.error('UX audit error:', err)
