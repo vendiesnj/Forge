@@ -4,7 +4,6 @@ import { Sidebar } from '@/components/sidebar'
 import { ProjectProvider } from '@/components/project-context'
 import { ProfileProvider } from '@/components/profile-context'
 import { IntegrationsProvider } from '@/components/integrations-context'
-import { SkillLevelModal } from '@/components/skill-level-modal'
 import { ProjectBar } from '@/components/project-bar'
 import { ConnectionHandler } from '@/components/connection-handler'
 import { GlobalProgressBanner } from '@/components/analysis-progress'
@@ -22,7 +21,6 @@ export default function DashboardLayout({
       <ProjectProvider>
         <IntegrationsProvider>
           <ThemeInit />
-          <SkillLevelModal />
           <Suspense><ConnectionHandler /></Suspense>
           <div className="flex h-screen bg-bg">
             <Sidebar />

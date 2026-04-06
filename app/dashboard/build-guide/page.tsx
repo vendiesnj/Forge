@@ -5,7 +5,6 @@ import { Topbar } from '@/components/topbar'
 import { PageExplainer } from '@/components/page-explainer'
 import { NextStepBar } from '@/components/next-step-bar'
 import { useProject } from '@/components/project-context'
-import { useProfile } from '@/components/profile-context'
 import { useProjectAnalysis } from '@/hooks/useProjectAnalysis'
 import { cn } from '@/lib/utils'
 import type { BuildGuide, IdeaAnalysis } from '@/types'
@@ -901,7 +900,6 @@ function BusinessGuide({
 
 export default function BuildGuidePage() {
   const { activeProject } = useProject()
-  const { skillLevel } = useProfile()
   const { result: guide, loading, pending, error, regenerate } = useProjectAnalysis<BuildGuide>('buildguide')
   const { result: idea } = useProjectAnalysis<IdeaAnalysis>('idea')
 
@@ -909,7 +907,7 @@ export default function BuildGuidePage() {
 
   const handleRegenerate = () => {
     if (!activeProject) return
-    regenerate({ idea: activeProject.idea, track: activeProject.track, skillLevel: skillLevel ?? 'intermediate' })
+    regenerate({ idea: activeProject.idea, track: activeProject.track, skillLevel: 'beginner' })
   }
 
   const titles = {

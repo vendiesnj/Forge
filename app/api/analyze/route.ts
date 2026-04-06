@@ -9,7 +9,7 @@ function buildPrompt(type: AnalysisType, input: Record<string, string>): string 
   switch (type) {
     case 'idea': {
       const trackLabel = input.track === 'invention' ? 'invention' : input.track === 'business' ? 'business' : 'software'
-      const skillLevel = input.skillLevel || 'intermediate'
+      const skillLevel = input.skillLevel || 'beginner'
       return `Analyze this ${trackLabel} idea: "${input.idea}". Builder skill level: ${skillLevel}.
 
 Return ONLY valid JSON with this exact structure:
@@ -77,7 +77,7 @@ Rules:
     }
     case 'buildguide': {
       const track = input.track || 'software'
-      const skillLevel = input.skillLevel || 'intermediate'
+      const skillLevel = input.skillLevel || 'beginner'
 
       const trackInstructions: Record<string, string> = {
         software:

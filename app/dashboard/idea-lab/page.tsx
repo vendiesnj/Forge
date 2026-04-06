@@ -8,7 +8,6 @@ import { PageExplainer } from '@/components/page-explainer'
 import { NextStepBar } from '@/components/next-step-bar'
 import { AnalysisProgress } from '@/components/analysis-progress'
 import { useProject } from '@/components/project-context'
-import { useProfile } from '@/components/profile-context'
 import { useProjectAnalysis } from '@/hooks/useProjectAnalysis'
 import { cn, scoreBg } from '@/lib/utils'
 import type { Track, IdeaAnalysis } from '@/types'
@@ -73,7 +72,6 @@ const platformLinks: Record<string, string> = {
 
 function IdeaLabPage() {
   const { activeProject, refreshProjects, setActiveProject, triggerBackgroundAnalyses } = useProject()
-  const { skillLevel } = useProfile()
   const searchParams = useSearchParams()
   const autoRun = searchParams.get('autorun') === '1'
   const autoFiredRef = useRef(false)
@@ -146,7 +144,7 @@ function IdeaLabPage() {
     // Pass the project ID directly so regenerate saves to it even if
     // React hasn't re-rendered with the new activeProject yet
     await regenerate(
-      { idea: idea.trim(), track, skillLevel: skillLevel ?? 'intermediate' },
+      { idea: idea.trim(), track, skillLevel: 'beginner' },
       currentProject?.id,
     )
 
@@ -154,10 +152,10 @@ function IdeaLabPage() {
     if (currentProject) {
       setGenerationProjectId(currentProject.id)
       const updatedProject = { ...currentProject, idea: idea.trim(), track }
-      triggerBackgroundAnalyses(updatedProject, skillLevel ?? 'intermediate')
+      triggerBackgroundAnalyses(updatedProject, 'beginner')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idea, track, activeProject, skillLevel, regenerate, triggerBackgroundAnalyses])
+  }, [idea, track, activeProject, regenerate, triggerBackgroundAnalyses])
 
   // Auto-run when coming from new project modal with ?autorun=1
   // Guard on activeProject so we don't fire before context hydrates (which would use null project and create a duplicate)
@@ -474,7 +472,7 @@ function IdeaLabPage() {
                           </Link>
                         )}
                       </div>
-                      {skillLevel === 'beginner' && step.beginnerNote && (
+                      {step.beginnerNote && (
                         <div className="mt-1.5 px-3 py-2 bg-surface2 border border-border rounded-forge">
                           <p className="text-xs text-ink3">{step.beginnerNote}</p>
                         </div>
